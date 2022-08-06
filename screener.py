@@ -1,5 +1,4 @@
 
-
 from pybit import usdt_perpetual
 import numpy as np
 import time
@@ -16,6 +15,9 @@ from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 import chart_studio.plotly as py
 from talib import TRANGE, ATR,EMA 
+import coinmarketcapapi
+
+#############################################
 
 #Script Section Selects Coins Below Min Buy Size Specified
 
@@ -65,7 +67,8 @@ k_price = list(itertools.chain.from_iterable(c_price))
 k_price = [d['price'] for d in k_price]
 
 df = pd.DataFrame()
-df['symbols'] = symbols_usdt
+df['symbol_usdt'] = symbols_usdt
+df['symbol'] = symbols_name
 df['min_lot'] = min_qty
 df['price'] = k_price
 df['min_buy'] = df['min_lot'] * df['price']
@@ -73,47 +76,26 @@ df['min_buy'] = df['min_lot'] * df['price']
 #enter min_buy size that you would like to filter out
 df = df[df['min_buy'] < min_notional]
 
-##df_sorted = df.sort_values(['min_buy', 'price', 'min_lot', 'symbols'], ascending = True)
-##print(df_sorted)
-##df_sorted.to_csv('one.csv')
+# print(df)
 
-select_symbols = df['symbols'].tolist()
+cmc = coinmarketcapapi.CoinMarketCapAPI("95e68090-4f8f-4fc6-842c-2e109cec3c9f")
+data_id_map = cmc.cryptocurrency_map()
+
+df1 = pd.DataFrame(data_id_map.data, columns =['name','symbol','rank'])
+df1 = df1[df1['rank'] <= min_cap]
+df1 = df1.sort_values('rank')
+# print(df1)
+
+df3 = pd.merge(df, df1, on='symbol')
+
+select_symbols = df3['symbol_usdt'].tolist()
 
 for elem in list(select_symbols):
     if elem == "XNO/USDT:USDT" or elem == "10000NFT/USDT:USDT" or elem=="USDC/USDT:USDT":
         select_symbols.remove(elem)
         
-print("Coins Selected Based on Buy Size:", select_symbols)
-
-########## market cap Part
-# find the market cap
-print('Filtering by marketCap !')
-headers = {'X-CMC_PRO_API_KEY': 'Your CMC API Key'}
-url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
-r = requests.get(url, headers=headers)
-find_ranks = {}
-if r.status_code == 200:
-    data = r.json()
-    #print(data)
-    for d in data['data']:
-        symbol = d['symbol']
-        find_ranks[symbol] = d['cmc_rank']
-
-after_market_cap=[]
-for symbol in select_symbols:
-    marketcap_symbol = symbol.upper().replace('/USDT:USDT', '')
-    marketcapPosition = find_ranks[marketcap_symbol] if (marketcap_symbol in find_ranks) else 999
-
-    if (marketcapPosition > min_cap) :
-        continue
-    after_market_cap.append(symbol)
-
-    print('Coin accepted :', symbol, ' / marketcap position : ', marketcapPosition)
- 
-
-
-print ("Symbol List: ", after_market_cap)
-time.sleep(5)
+print("Coins Selected Based on Filters:", select_symbols)
+time.sleep(10)
 
 ftx = ccxt.ftx({
     'apiKey': '',
@@ -131,7 +113,7 @@ bybit = ccxt.bybit({
 
 markets = bybit.load_markets()
 
-symbols = after_market_cap        
+symbols = select_symbols    
 msec = 1000
 minute = 60 * msec
 hold = 30
